@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Decentralized Student Identity</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.11.1/dist/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <style>
+    /* Custom scrollbar for better aesthetics in light mode */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #f1f5f9; /* bg-slate-100 */
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #94a3b8; /* bg-slate-400 */
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #64748b; /* bg-slate-500 */
+    }
+    /* Simple fade-in animation for notifications */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(100%); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    .notification {
+        animation: fadeIn 0.5s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-gray-800 font-sans">
+
+  <!-- Notification Container -->
+  <div id="notification-container" class="fixed top-5 right-5 z-50 space-y-3 w-80"></div>
+
+  <div class="container mx-auto max-w-6xl p-4 sm:p-8">
+    <header class="text-center mb-10 bg-gradient-to-r from-teal-100 to-sky-100 p-8 rounded-xl shadow-lg border border-gray-200">
+      <h1 class="text-4xl sm:text-5xl font-bold text-gray-800">Decentralized Student Identity (DSIS)</h1>
+      <p class="text-sky-700 mt-2 text-lg font-semibold">Hackathon Starter Project</p>
+    </header>
+
+    <!-- Connect Wallet Section -->
+    <div class="bg-cyan-100 p-6 rounded-xl shadow-md mb-8 border border-cyan-200">
+      <button id="connectBtn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg shadow-lg hover:shadow-cyan-500/30">
+        Connect MetaMask
+      </button>
+      <div id="accountInfo" class="mt-4 text-center text-green-800 font-mono break-words bg-green-100 border border-green-200 p-3 rounded-md hidden"></div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid lg:grid-cols-3 gap-8">
+
+      <!-- Column 1: Register & Add Cert -->
+      <div class="lg:col-span-2 space-y-8">
+        <!-- Register Student Section -->
+        <section class="bg-indigo-100 p-6 rounded-xl shadow-md border border-indigo-200">
+          <h3 class="text-2xl font-semibold text-indigo-700 mb-5 border-b border-indigo-200 pb-3">1) Register Student</h3>
+          <div class="space-y-4">
+            <div>
+              <label for="studentId" class="block mb-2 text-sm font-medium text-gray-600">Student ID</label>
+              <input id="studentId" placeholder="eg. S12345" class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            <div>
+              <label for="studentName" class="block mb-2 text-sm font-medium text-gray-600">Full Name</label>
+              <input id="studentName" placeholder="eg. Shahid Jamal" class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            <div>
+              <label for="metadataURI" class="block mb-2 text-sm font-medium text-gray-600">Metadata URI (optional - IPFS link)</label>
+              <input id="metadataURI" placeholder="ipfs://... or https://..." class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-indigo-500 focus:border-indigo-500 transition">
+            </div>
+            <button id="registerBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-lg hover:shadow-blue-500/30">
+              Register on Blockchain
+            </button>
+          </div>
+        </section>
+
+        <!-- Add Certificate Section -->
+        <section class="bg-orange-100 p-6 rounded-xl shadow-md border border-orange-200">
+          <h3 class="text-2xl font-semibold text-orange-700 mb-5 border-b border-orange-200 pb-3">2) Add Certificate</h3>
+          <div class="space-y-4">
+            <div>
+              <label for="certName" class="block mb-2 text-sm font-medium text-gray-600">Certificate Name</label>
+              <input id="certName" placeholder="eg. SIH Winner" class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-orange-500 focus:border-orange-500 transition">
+            </div>
+             <div>
+              <label for="certFile" class="block mb-2 text-sm font-medium text-gray-600">Choose Certificate File (pdf/image)</label>
+              <input type="file" id="certFile" class="w-full text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-orange-200 file:text-orange-800 hover:file:bg-orange-300 transition cursor-pointer">
+            </div>
+            <div class="grid sm:grid-cols-2 gap-4">
+              <button id="computeHashBtn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors">Compute SHA-256 Hash</button>
+              <button id="addCertBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-lg hover:shadow-blue-500/30">Add Certificate on Chain</button>
+            </div>
+             <div>
+                <label for="fileHash" class="block mb-2 text-sm font-medium text-gray-600">Computed Hash (hex)</label>
+                <textarea id="fileHash" rows="2" readonly class="w-full p-3 bg-gray-200 border border-gray-300 rounded-md text-gray-500 font-mono cursor-not-allowed"></textarea>
+             </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Column 2: Verify & QR -->
+      <div class="space-y-8">
+        <!-- Verify Section -->
+        <section class="bg-green-100 p-6 rounded-xl shadow-md border border-green-200">
+          <h3 class="text-2xl font-semibold text-green-700 mb-5 border-b border-green-200 pb-3">3) Verify Certificate</h3>
+          <div class="space-y-4">
+              <div>
+                <label for="verifyStudentId" class="block mb-2 text-sm font-medium text-gray-600">Student ID</label>
+                <input id="verifyStudentId" class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-green-500 focus:border-green-500 transition">
+              </div>
+              <div>
+                <label for="verifyCertName" class="block mb-2 text-sm font-medium text-gray-600">Certificate Name</label>
+                <input id="verifyCertName" class="w-full p-3 bg-white border border-gray-300 rounded-md text-gray-900 focus:ring-green-500 focus:border-green-500 transition">
+              </div>
+              <button id="verifyBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors shadow-lg hover:shadow-green-500/30">Get On-Chain Hash</button>
+              <div>
+                <label for="onChainHash" class="block mb-2 text-sm font-medium text-gray-600">On-Chain Hash (bytes32)</label>
+                <textarea id="onChainHash" rows="2" readonly class="w-full p-3 bg-gray-200 border border-gray-300 rounded-md text-gray-500 font-mono cursor-not-allowed"></textarea>
+              </div>
+          </div>
+        </section>
+
+        <!-- QR Code Display -->
+        <section class="bg-pink-100 p-6 rounded-xl shadow-md border border-pink-200 text-center">
+            <h3 class="text-2xl font-semibold text-pink-700 mb-4">Transaction QR Code</h3>
+            <div id="qr" class="mt-4 p-4 bg-white rounded-lg inline-block mx-auto min-w-[216px] min-h-[216px] flex items-center justify-center border border-gray-200">
+                <span class="text-gray-400">QR will appear here...</span>
+            </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- NOTIFICATION SYSTEM ---
+    function showNotification(message, type = 'info') {
+        const container = document.getElementById('notification-container');
+        const notif = document.createElement('div');
+        
+        let bgColor, textColor, icon;
+        switch(type) {
+            case 'success':
+                bgColor = 'bg-green-500'; textColor = 'text-white'; 
+                icon = <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
+                break;
+            case 'error':
+                bgColor = 'bg-red-500'; textColor = 'text-white'; 
+                icon = <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
+                break;
+            default:
+                bgColor = 'bg-blue-500'; textColor = 'text-white'; 
+                icon = <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>;
+                break;
+        }
+
+        notif.className = notification flex items-center p-4 rounded-lg shadow-lg ${bgColor} ${textColor} text-sm;
+        notif.innerHTML = ${icon}<span>${message}</span>;
+        
+        container.appendChild(notif);
+        
+        setTimeout(() => {
+            notif.style.opacity = '0';
+            notif.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => notif.remove(), 500);
+        }, 5000);
+    }
+
+
+    // --- BLOCKCHAIN LOGIC ---
+    // IMPORTANT: Replace with your deployed contract address and ABI
+    const CONTRACT_ADDRESS = "REPLACE_WITH_YOUR_CONTRACT_ADDRESS";
+    const CONTRACT_ABI = [ /* PASTE YOUR ABI ARRAY HERE */ ];
+
+    let provider, signer, contract;
+
+    async function connectWallet() {
+      if (!window.ethereum) return showNotification("Install MetaMask to use this dApp", "error");
+      try {
+        provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        signer = await provider.getSigner();
+        const addr = await signer.getAddress();
+        const accountInfo = document.getElementById('accountInfo');
+        accountInfo.innerText = "Connected: " + addr.substring(0, 6) + "..." + addr.substring(addr.length - 4);
+        accountInfo.classList.remove('hidden');
+
+        // Check if contract address is set
+        if (CONTRACT_ADDRESS === "REPLACE_WITH_YOUR_CONTRACT_ADDRESS" || CONTRACT_ABI.length === 0) {
+             showNotification("Contract not configured. Please edit the script.", "error");
+             return;
+        }
+        contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        showNotification("Wallet connected successfully!", "success");
+      } catch(err) {
+        console.error(err);
+        showNotification(err.message || "Failed to connect wallet.", "error");
+      }
+    }
+
+    document.getElementById('connectBtn').onclick = connectWallet;
+
+    // Helper: compute SHA-256 of file using SubtleCrypto
+    async function sha256File(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hex;
+    }
+
+    document.getElementById('computeHashBtn').onclick = async () => {
+      const f = document.getElementById('certFile').files[0];
+      if (!f) return showNotification("Please choose a file first.", "error");
+      try {
+        const hex = await sha256File(f);
+        document.getElementById('fileHash').value = hex;
+        showNotification("File hash computed successfully.", "success");
+      } catch (err) {
+        console.error(err);
+        showNotification("Could not compute hash.", "error");
+      }
+    };
+
+    // Convert 32-byte hex to bytes32 (prefix 0x)
+    function toBytes32(hex) {
+      if (hex.startsWith("0x")) hex = hex.slice(2);
+      if (hex.length > 64) hex = hex.slice(0, 64);
+      return "0x" + hex.padEnd(64, '0');
+    }
+
+    document.getElementById('addCertBtn').onclick = async () => {
+      if (!contract) return showNotification("Connect wallet first", "error");
+      const sid = document.getElementById('studentId').value.trim();
+      const cname = document.getElementById('certName').value.trim();
+      const fhex = document.getElementById('fileHash').value.trim();
+      if (!sid || !cname || !fhex) return showNotification("Provide StudentId, Certificate name and computed file hash", "error");
+      
+      const b32 = toBytes32(fhex);
+      try {
+        const tx = await contract.addCertificate(sid, cname, b32);
+        showNotification("Transaction sent. Waiting for confirmation...", "info");
+        await tx.wait(); // Wait for transaction to be mined
+        showNotification("Certificate added! Tx: " + tx.hash.substring(0,10)+"...", "success");
+
+        // Render QR with studentId+certName+txHash
+        const qrContainer = document.getElementById("qr");
+        qrContainer.innerHTML = ""; // Clear previous QR
+        new QRCode(qrContainer, {
+          text: JSON.stringify({ studentId: sid, certName: cname, txHash: tx.hash }),
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H
+        });
+      } catch (err) {
+        console.error(err);
+        showNotification(err.reason || err.message || "An error occurred.", "error");
+      }
+    };
+
+    document.getElementById('registerBtn').onclick = async () => {
+      if (!contract) return showNotification("Connect wallet first", "error");
+      const sid = document.getElementById('studentId').value.trim();
+      const name = document.getElementById('studentName').value.trim();
+      const meta = document.getElementById('metadataURI').value.trim();
+      if (!sid || !name) return showNotification("Provide StudentId and Name", "error");
+      try {
+        const tx = await contract.registerStudent(sid, name, meta);
+        showNotification("Registration transaction sent. Waiting...", "info");
+        await tx.wait();
+        showNotification("Student Registered! Tx: " + tx.hash.substring(0,10)+"...", "success");
+      } catch (err) {
+        console.error(err);
+        showNotification(err.reason || err.message || "An error occurred.", "error");
+      }
+    };
+
+    document.getElementById('verifyBtn').onclick = async () => {
+      if (!contract) return showNotification("Connect wallet first", "error");
+      const vsid = document.getElementById('verifyStudentId').value.trim();
+      const vcname = document.getElementById('verifyCertName').value.trim();
+      if (!vsid || !vcname) return showNotification("Provide StudentId and Certificate name", "error");
+      try {
+        const onChain = await contract.getCertificateHash(vsid, vcname);
+        document.getElementById('onChainHash').value = onChain;
+        showNotification("On-chain hash retrieved!", "success");
+      } catch (err) {
+        console.error(err);
+        showNotification(err.reason || err.message || "An error occurred or hash not found.", "error");
+      }
+    };
+  </script>
+</body>
+</html>

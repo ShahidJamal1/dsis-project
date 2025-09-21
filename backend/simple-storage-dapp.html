@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>SimpleStorage DApp (Compile + Deploy + Interact)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; }
+    h1 { margin-bottom: 8px; }
+    .card { border: 1px solid #e0e0e0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin: 6px 0; }
+    input, textarea, button, select { padding: 8px; border-radius: 6px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
+    button { cursor: pointer; background: #4f46e5; color: white; border: none; }
+    button.secondary { background: #10b981; }
+    button:disabled { background: #a3a3a3; cursor: not-allowed; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small { font-size: 12px; color: #555; }
+    .success { color: #059669; }
+    .error { color: #dc2626; }
+    .muted { color: #6b7280; }
+    .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+  <!-- Ethers v6 -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.min.js"></script>
+  <!-- solc-js (WASM) compiler -->
+  <script src="https://binaries.soliditylang.org/bin/soljson-v0.8.20+commit.a1b79de6.js"></script>
+</head>
+<body>
+  <h1>SimpleStorage DApp</h1>
+  <p class="muted">Compile, deploy, and interact with a Solidity contract directly in the browser using MetaMask.</p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Target Network (MetaMask)</label>
+        <div class="small">Switch your MetaMask network to Polygon Mumbai (Chain ID 80001) or Amoy (80002) before deploying.</div>
+      </div>
+      <div>
+        <label>Account</label>
+        <div id="account" class="mono nowrap">Not connected</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <button id="connectBtn">Connect MetaMask</button>
+      <button id="detectBtn" class="secondary">Detect Network</button>
+    </div>
+    <div class="small" id="networkInfo"></div>
+  </div>
+
+  <div class="card">
+    <label>Solidity Source (SimpleStorage.sol)</label>
+    <textarea id="source" rows="10" class="mono">// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract SimpleStorage {
+    uint256 public data;
+    event DataChanged(uint256 indexed newValue, address indexed setter);
+    function setData(uint256 _data) external {
+        data = _data;
+        emit DataChanged(_data, msg.sender);
+    }
+}
+</textarea>
+    <div class="row" style="margin-top: 12px;">
+      <button id="compileBtn">Compile</button>
+      <button id="deployBtn" disabled>Deploy</button>
+    </div>
+    <div class="small">Compiler: 0.8.20 (solc-js)</div>
+    <div id="compileStatus" class="small mono"></div>
+    <div id="deployStatus" class="small mono"></div>
+  </div>
+
+  <div class="card">
+    <label>Contract Address</label>
+    <input id="contractAddress" class="mono" placeholder="0x..." />
+    <div class="row" style="margin-top: 12px;">
+      <div>
+        <label>Set Data</label>
+        <input id="valueInput" type="number" placeholder="Enter value" />
+      </div>
+      <div style="display:flex;align-items:end;">
+        <button id="setBtn">Set Data</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <button id="getBtn" class="secondary">Get Data</button>
+      <div id="output" class="mono"></div>
+    </div>
+    <div id="txStatus" class="small mono"></div>
+  </div>
+
+  <script>
+    // Initialize solc compiler
+    const solc = self.Module;
+
+    let provider, signer, lastAbi = null, lastBytecode = null;
+
+    function log(el, msg, kind) {
+      el.textContent = msg;
+      el.className = `small mono ${kind || ''}`;
+    }
+
+    async function getProvider() {
+      if (!window.ethereum) { alert('Install MetaMask'); throw new Error('MetaMask not found'); }
+      provider = new ethers.BrowserProvider(window.ethereum);
+      return provider;
+    }
+
+    async function connect() {
+      await getProvider();
+      await provider.send('eth_requestAccounts', []);
+      signer = await provider.getSigner();
+      document.getElementById('account').textContent = await signer.getAddress();
+    }
+
+    async function detectNetwork() {
+      await getProvider();
+      const net = await provider.getNetwork();
+      document.getElementById('networkInfo').textContent = `Network: ${net.name || 'unknown'} | chainId: ${Number(net.chainId)}`;
+    }
+
+    function compileSource(src) {
+      const input = {
+        language: 'Solidity',
+        sources: { 'SimpleStorage.sol': { content: src } },
+        settings: {
+          optimizer: { enabled: true, runs: 200 },
+          outputSelection: { '*': { '*': ['abi', 'evm.bytecode'] } }
+        }
+      };
+      const output = JSON.parse(solc.cwrap('solidity_compile', 'string', ['string'])(JSON.stringify(input)));
+      if (output.errors) {
+        const fatal = output.errors.find(e => e.severity === 'error');
+        return { output, success: !fatal };
+      }
+      return { output, success: true };
+    }
+
+    async function deploy(abi, bytecode) {
+      if (!signer) await connect();
+      const factory = new ethers.ContractFactory(abi, bytecode, signer);
+      const contract = await factory.deploy();
+      const receipt = await contract.deploymentTransaction().wait();
+      return contract.target; // address
+    }
+
+    async function setData(address, abi, value) {
+      if (!signer) await connect();
+      const contract = new ethers.Contract(address, abi, signer);
+      const tx = await contract.setData(value);
+      const receipt = await tx.wait();
+      return receipt.hash;
+    }
+
+    async function getData(address, abi) {
+      await getProvider();
+      const contract = new ethers.Contract(address, abi, provider);
+      return await contract.data();
+    }
+
+    // Event handlers
+    document.getElementById('connectBtn').onclick = connect;
+    document.getElementById('detectBtn').onclick = detectNetwork;
+
+    document.getElementById('compileBtn').onclick = async () => {
+      const src = document.getElementById('source').value;
+      const compileStatus = document.getElementById('compileStatus');
+      log(compileStatus, 'Compiling...', 'muted');
+      try {
+        const { output, success } = compileSource(src);
+        if (!success) {
+          const msgs = output.errors.map(e => `${e.severity}: ${e.formattedMessage}`).join('\n');
+          log(compileStatus, msgs, 'error');
+          document.getElementById('deployBtn').disabled = true;
+          return;
+        }
+        const contract = output.contracts['SimpleStorage.sol']['SimpleStorage'];
+        lastAbi = contract.abi;
+        lastBytecode = '0x' + contract.evm.bytecode.object;
+        log(compileStatus, 'Compilation successful', 'success');
+        document.getElementById('deployBtn').disabled = false;
+      } catch (e) {
+        log(compileStatus, 'Compilation failed: ' + e.message, 'error');
+        document.getElementById('deployBtn').disabled = true;
+      }
+    };
+
+    document.getElementById('deployBtn').onclick = async () => {
+      const deployStatus = document.getElementById('deployStatus');
+      if (!lastAbi || !lastBytecode) { log(deployStatus, 'Compile first', 'error'); return; }
+      log(deployStatus, 'Deploying... confirm in MetaMask', 'muted');
+      try {
+        const addr = await deploy(lastAbi, lastBytecode);
+        document.getElementById('contractAddress').value = addr;
+        log(deployStatus, 'Deployed at ' + addr, 'success');
+      } catch (e) {
+        log(deployStatus, 'Deploy error: ' + e.message, 'error');
+      }
+    };
+
+    document.getElementById('setBtn').onclick = async () => {
+      const txStatus = document.getElementById('txStatus');
+      const addr = document.getElementById('contractAddress').value.trim();
+      const val = document.getElementById('valueInput').value;
+      if (!addr) { log(txStatus, 'Enter contract address', 'error'); return; }
+      if (!/^(0x)?[0-9a-fA-F]{40}$/.test(addr)) { log(txStatus, 'Invalid address', 'error'); return; }
+      try {
+        log(txStatus, 'Sending transaction...', 'muted');
+        const hash = await setData(addr, lastAbi, val);
+        log(txStatus, 'Tx sent: ' + hash, 'success');
+      } catch (e) {
+        log(txStatus, 'Tx error: ' + e.message, 'error');
+      }
+    };
+
+    document.getElementById('getBtn').onclick = async () => {
+      const txStatus = document.getElementById('txStatus');
+      const out = document.getElementById('output');
+      const addr = document.getElementById('contractAddress').value.trim();
+      if (!addr) { log(txStatus, 'Enter contract address', 'error'); return; }
+      try {
+        out.textContent = 'Reading...';
+        const value = await getData(addr, lastAbi);
+        out.textContent = 'Stored Value: ' + value;
+      } catch (e) {
+        out.textContent = '';
+        log(txStatus, 'Read error: ' + e.message, 'error');
+      }
+    };
+  </script>
+</body>
+</html>
